@@ -1,40 +1,45 @@
+# Setup
 {
   library(tidyverse)
-  library(lubridate)
+  library(zoo)
   
   
   theme_set(theme_bw())
 }
 # https://weather.wsu.edu/
 
-files <- list.files(
-  "Data/Addy WA/", pattern = ".csv",
-  full.names = T
-)
 
-files[[6]] %>% 
-  read_csv(., skip = 1) %>% colnames()
+# Data Prep
+{
+  files <- list.files(
+    "Data/Addy WA/", pattern = ".csv",
+    full.names = T
+  )
+  
+  files %>% 
+    read_csv(., skip = 1) %>% colnames()
   rename_with(~c(
     "date", "day", "air_temp_min", "air_temp_avg", "air_temp_max", "dp_avg", "rh_avg", "soil_temp_2in", "soil_temp_8in_min", "soil_temp_8in_avg",
     "swp_2in", "swp_8in", "precip", "solar_rad", "eto_in", "etr_in"
   ))
-
-data <- lapply(files[8:9], function(x){
-  read_csv(x)
-}) %>% 
-  do.call(rbind, .) %>% 
-  distinct() %>% 
-  rename_with(~c(
-    "date", "day", "air_temp_min", "air_temp_avg", "air_temp_max", "dp_avg", "rh_avg", "soil_temp_2in", "soil_temp_8in_min", "soil_temp_8in_avg",
-    "swp_2in", "swp_8in", "precip", "solar_rad", "eto_in", "etr_in"
-  )) %>% 
-  mutate(
-    year = year(date),
-    day.year = yday(date),
-    max.date = ifelse(date == max(date), 1, 0),
-    month = as.factor(month(date)),
-    cdd = pmax((air_temp_max + air_temp_min) / 2 - 65, 0)
-  )
+  
+  data <- lapply(files, function(x){
+    read_csv(x)
+  }) %>% 
+    do.call(rbind, .) %>% 
+    distinct() %>% 
+    rename_with(~c(
+      "date", "day", "air_temp_min", "air_temp_avg", "air_temp_max", "dp_avg", "rh_avg", "soil_temp_2in", "soil_temp_8in_min", "soil_temp_8in_avg",
+      "swp_2in", "swp_8in", "precip", "solar_rad", "eto_in", "etr_in"
+    )) %>% 
+    mutate(
+      year = year(date),
+      day.year = yday(date),
+      max.date = ifelse(date == max(date), 1, 0),
+      month = as.factor(month(date)),
+      cdd = pmax((air_temp_max + air_temp_min) / 2 - 65, 0)
+    )
+}
 
   
 
@@ -154,22 +159,24 @@ data %>%
   {
     (chart.a_gdd <- data.gdd %>% 
        filter(year != 2015) %>% 
-       # filter(day.year <= 244) %>% 
+       filter(day.year <= 244) %>% 
+       filter(day.year >= 100) %>%
       ggplot(aes(x = day.year, y = gdd.agg, color = as.factor(year))) +
-      geom_line(size = 1) +
-      geom_hline(yintercept = a.gdd_harvest, linetype = "dashed") +
-      ggrepel::geom_text_repel(
-        aes(label = ifelse(first.harvest == 1, format(as.Date(date), "%m-%d"), "")),
-        color = "black", max.overlaps = 100, size = 3
-      ) +
-      geom_point(aes(size = as.factor(max.date))) +
-      geom_vline(xintercept = 239, linetype = "dashed") +
-      scale_size_manual(values = c(0,5), guide = "none") +
-      ggtitle("Accumulated Growing Degree Days", paste0("Baseline: ", gdd_baseline)) +
-      theme_bw() +
-      theme(
-        legend.position = "bottom"
-      ))
+       # geom_text(aes(label = year, group = year)) +
+        geom_line(size = 1) +
+        geom_hline(yintercept = a.gdd_harvest, linetype = "dashed") +
+        ggrepel::geom_text_repel(
+          aes(label = ifelse(first.harvest == 1, format(as.Date(date), "%m-%d"), "")),
+          color = "black", max.overlaps = 100, size = 3
+        ) +
+        geom_point(aes(size = as.factor(max.date))) +
+        geom_vline(xintercept = 239, linetype = "dashed") +
+        scale_size_manual(values = c(0,5), guide = "none") +
+        ggtitle("Accumulated Growing Degree Days", paste0("Baseline: ", gdd_baseline)) +
+        theme_bw() +
+        theme(
+          legend.position = "bottom"
+        ))
   }
   
   # Avg gdd / day
@@ -196,18 +203,55 @@ data %>%
   # Predicted Cultivation Date
   {
     
-    model.lm <- data.gdd %>% 
-      # ggplot(aes(x = day.year, y = gdd, color = year)) +
-      # geom_point()
-      lm(
-        data = .,
-        fabletools::box_cox(gdd, 1) ~ day.year*month
-          + I(day.year^2)*month
-        # + ifelse(day.year < 50, 1, 0)
-        # + ifelse(day.year > 320, 1, 0)
-      ); summary(model.lm); par(mfrow = c(2,2)); plot(model.lm)
-    # par(mfrow = c(2,2)); plot(model.lm)
+    #
+    {
+      data.gdd %>% 
+        ggplot(aes(x = day.year, y = gdd, color = factor(year))) +
+        geom_point()
+      
+      data.gdd %>% 
+        ggplot(aes(x = air_temp_avg, y = gdd, color = factor(year))) +
+        geom_point()
+      
+      data.gdd %>% 
+        ggplot(aes(x = day.year, y = air_temp_avg, color = factor(year))) +
+        geom_point()
+    }
     
+    # Linear Model
+    {
+      model.lm <- data.gdd %>% 
+        lm(
+          data = .,
+          fabletools::box_cox(gdd, 1) ~ day.year#*month
+          + I(day.year^2)#*month
+          + ifelse(day.year < 75, 1, 0)
+          + ifelse(day.year > 300, 1, 0)
+        ); summary(model.lm); par(mfrow = c(2,2)); plot(model.lm)
+      
+      
+      bc <- 1.55; model.lm <- data.gdd %>% 
+        lm(
+          data = .,
+          fabletools::box_cox(gdd, bc) ~ fabletools::box_cox(air_temp_avg, bc)
+            # day.year#*month
+          # + I(day.year^2)#*month
+          # + ifelse(day.year < 75, 1, 0)
+          # + ifelse(day.year > 300, 1, 0)
+        ); summary(model.lm); par(mfrow = c(2,2)); plot(model.lm)
+      
+    }
+    
+    {
+      avg.temp <- data.gdd %>% 
+        group_by(day.year) %>% 
+        summarize(air_temp_avg = mean(air_temp_avg)) %>% 
+        ungroup() %>% 
+        mutate(
+          air_temp_avg = rollmean(air_temp_avg, k = 7, fill = NA, align = "center"),
+          air_temp_avg = zoo::na.approx(air_temp_avg, rule = 2)
+        )
+    }
     
     
     cy.gdd.predict <- tibble(
@@ -219,6 +263,7 @@ data %>%
         day.year = yday(date),
         month = as.factor(month(date))
       ) %>% 
+      left_join(y = avg.temp, by = "day.year") %>% 
       predict(model.lm, newdata = .)
     
     gdd.predict <- tibble(
