@@ -36,8 +36,11 @@
       year = year(date),
       day.year = yday(date),
       max.date = ifelse(date == max(date), 1, 0),
+      current.year = ifelse(year == year(today()), 1, 0),
       month = as.factor(month(date)),
-      cdd = pmax((air_temp_max + air_temp_min) / 2 - 65, 0)
+      cdd = pmax((air_temp_max + air_temp_min) / 2 - 65, 0),
+      gdd.b40 = pmax((air_temp_max + air_temp_min) / 2 - 40, 0),
+      gdd.b40.c85 = pmax(pmin((air_temp_max + air_temp_min) / 2 - 40, 85), 0),
     )
 }
 
@@ -51,8 +54,26 @@ data %>%
   filter(day.year <= 202) %>% 
   group_by(year) %>% 
   mutate(cdd.agg = cumsum(cdd)) %>% 
-  ggplot(aes(x = day.year, y = cdd.agg, color = as.factor(year))) +
-  geom_line(size = 1) 
+  ggplot(aes(x = day.year, y = cdd.agg)) +
+  geom_line(size = 1, aes(color = as.factor(year))) +
+  geom_smooth(se = F, color = "black")
+
+# Growing Degree Days
+data %>% 
+  # rowwise() %>% 
+  filter(day.year > 50) %>% 
+  filter(day.year <= 202) %>% 
+  group_by(year) %>% 
+  mutate(gdd.agg = cumsum(gdd.b40)) %>% 
+  ggplot(aes(x = day.year, y = gdd.agg)) +
+  geom_line(
+    aes(color = as.factor(year), linewidth = factor(current.year))
+  ) +
+  geom_smooth(se = F, color = "black") +
+  scale_linewidth_manual(values = c(.5, 1.5)) +
+  scale_y_continuous(
+    trans = "log"
+  )
 
 
 # Max/Min Temp
@@ -77,10 +98,13 @@ data %>%
       mutate(precip.cum = cumsum(precip)) %>% 
       ungroup() %>% 
       filter(day.year <= 244) %>% # ~ Bgn of Sept.
-      ggplot(aes(x = day.year, y = precip.cum, color = as.factor(year))) +
-      # geom_smooth(se = F) +
-      geom_line(size = 1.1) +
-      geom_point(aes(size = as.factor(max.date))) +
+      ggplot(aes(x = day.year, y = precip.cum)) +
+      geom_line(
+        aes(color = as.factor(year), linewidth = factor(current.year))
+      ) +
+      geom_smooth(se = F, color = "black") +
+      # geom_point(aes(size = as.factor(max.date))) +
+      scale_linewidth_manual(values = c(.5, 1.5)) +
       scale_size_manual(values = c(0,5), guide = "none") +
       ggtitle("Winter Snowpack") +
       theme_bw() +
@@ -97,10 +121,14 @@ data %>%
       mutate(precip.cum = cumsum(precip)) %>% 
       ungroup() %>% 
       filter(day.year <= 244) %>% # ~ Bgn of Sept.
-      ggplot(aes(x = day.year, y = precip.cum, color = as.factor(year))) +
-      # geom_smooth(se = F) +
-      geom_line(size = 1.1) +
-      geom_point(aes(size = as.factor(max.date))) +
+      ggplot(aes(x = day.year, y = precip.cum)) +
+      geom_line(
+        aes(color = as.factor(year), linewidth = factor(current.year))
+      ) +
+      geom_smooth(se = F, color = "black") +
+      # geom_point(aes(size = as.factor(max.date))) +
+      scale_linewidth_manual(values = c(.5, 1.5)) +
+      scale_size_manual(values = c(0,5), guide = "none") +
       ggtitle("Spring Precipitation") +
       scale_size_manual(values = c(0,5), guide = "none") +
       theme_bw() +
@@ -120,10 +148,13 @@ data %>%
       mutate(precip.cum = cumsum(precip)) %>% 
       ungroup() %>% #select(date, day.year, year, year.offset, precip, precip.cum) %>%  View()
       filter(day.year <= 244) %>%  # ~ Bgn of Sept.
-      ggplot(aes(x = day.year, y = precip.cum, color = as.factor(year))) +
-      # geom_smooth(se = F) +
-      geom_line(size = 1.1) +
-      geom_point(aes(size = as.factor(max.date))) +
+      ggplot(aes(x = day.year, y = precip.cum)) +
+      geom_line(
+        aes(color = as.factor(year), linewidth = factor(current.year))
+      ) +
+      geom_smooth(se = F, color = "black") +
+      # geom_point(aes(size = as.factor(max.date))) +
+      scale_linewidth_manual(values = c(.5, 1.5)) +
       scale_size_manual(values = c(0,5), guide = "none") +
       ggtitle("Snowpack + Spring Precipitation") +
       theme_bw() +
@@ -160,8 +191,8 @@ data %>%
     (chart.a_gdd <- data.gdd %>% 
        filter(year != 2015) %>% 
        filter(day.year <= 244) %>% 
-       filter(day.year >= 100) %>%
-      ggplot(aes(x = day.year, y = gdd.agg, color = as.factor(year))) +
+       filter(day.year >= 190) %>%
+        ggplot(aes(x = day.year, y = gdd.agg, color = as.factor(year))) +
        # geom_text(aes(label = year, group = year)) +
         geom_line(size = 1) +
         geom_hline(yintercept = a.gdd_harvest, linetype = "dashed") +
