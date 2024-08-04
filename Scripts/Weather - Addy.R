@@ -16,21 +16,21 @@
     full.names = T
   )
   
-  files %>% 
-    read_csv(., skip = 1) %>% colnames()
-  rename_with(~c(
-    "date", "day", "air_temp_min", "air_temp_avg", "air_temp_max", "dp_avg", "rh_avg", "soil_temp_2in", "soil_temp_8in_min", "soil_temp_8in_avg",
-    "swp_2in", "swp_8in", "precip", "solar_rad", "eto_in", "etr_in"
-  ))
   
-  data <- lapply(files, function(x){
-    read_csv(x)
-  }) %>% 
-    do.call(rbind, .) %>% 
+  
+  data <- files %>% 
+    read_csv(skip = 2) %>% 
     distinct() %>% 
+    select(-contains("...")) %>% 
     rename_with(~c(
-      "date", "day", "air_temp_min", "air_temp_avg", "air_temp_max", "dp_avg", "rh_avg", "soil_temp_2in", "soil_temp_8in_min", "soil_temp_8in_avg",
-      "swp_2in", "swp_8in", "precip", "solar_rad", "eto_in", "etr_in"
+      "date", "air_temp_min", "air_temp_avg", "air_temp_max", 
+      "air_temp_min_9m", "air_temp_avg_9m", "air_temp_max_9m", 
+      "dp_avg", "rh_avg", "solar.rad", "precip", 
+      "wind.speed", "wind.gust", 
+      "wind.speed.10m", "wind.gust.10m", "wind.dir.10m",
+      "soil_temp_2in", "soil.water.2in",
+      "soil_temp_8in", "soil.water.8in",
+      "eto", "etr"
     )) %>% 
     mutate(
       year = year(date),
