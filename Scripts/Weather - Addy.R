@@ -8,30 +8,92 @@
 }
 # https://weather.wsu.edu/
 
-
-# Data Prep
+# Inputs 
 {
-  files <- list.files(
-    "Data/Addy WA/", pattern = ".csv",
-    full.names = T
-  )
-  
-  
-  
-  data <- files %>% 
-    read_csv(skip = 2) %>% 
-    distinct() %>% 
-    select(-contains("...")) %>% 
-    rename_with(~c(
-      "date", "air_temp_min", "air_temp_avg", "air_temp_max", 
+  name.lookup <- tibble(
+    original = c(
+      "1.5 m Min Air Temp", "1.5 m Avg Air Temp", "1.5 m Max Air Temp",
+      "9 m Min Air Temp", "9 m Avg Air Temp", "9 m Max Air Temp",
+      "1.5 m Avg Dew Point", "1.5 m Min Rel. Hum", "Solar Radiation",
+      "Precipiation", "Precipitation", "2 m Avg Wind Speed", "2 m Max Wind Gust",
+      "10 m Avg Wind Speed", "10 m Max Wind Gust", "10 m Avg Wind Dir",
+      "2 in Avg Soil Temperature", "2 in Avg Soil Water Pot",
+      "8 in Avg Soil Temperature", "8 in Avg Soil Water Pot",
+      "ETo", "ETr"
+    ),
+    name = c(
+      "air_temp_min", "air_temp_avg", "air_temp_max", 
       "air_temp_min_9m", "air_temp_avg_9m", "air_temp_max_9m", 
-      "dp_avg", "rh_avg", "solar.rad", "precip", 
+      "dp_avg", "rh_avg", "solar.rad", "precip", "precip", 
       "wind.speed", "wind.gust", 
       "wind.speed.10m", "wind.gust.10m", "wind.dir.10m",
       "soil_temp_2in", "soil.water.2in",
       "soil_temp_8in", "soil.water.8in",
       "eto", "etr"
-    )) %>% 
+    )
+  )
+}
+
+# Data Prep
+{
+  files <- list.files(
+    "Data/", pattern = ".csv",
+    full.names = T, include.dirs = FALSE
+  )
+  
+  dlist <- list()
+  
+  for(f in 1:length(files)){
+    lines <- files[[f]] %>% 
+      read_lines()
+    
+    # section.starts <- str_which(lines, "Addy|Ephrata")
+    section.starts <- str_which(lines, "Date")
+    
+    dlist.s <- list()
+    
+    for(s in 1:length(section.starts)){
+      station <- lines[section.starts[s]-2] %>% 
+        str_extract(., "[:alpha:]*(?=,)")
+      
+      dlist.s[[s]] <- files[[f]] %>% 
+        read_csv(
+          skip = section.starts[s]-1, 
+          n_max = coalesce(section.starts[s+1] - section.starts[s], 366)
+        ) %>% 
+        mutate(
+          station = station,
+          # Date = ymd(Date)
+          across(everything(), as.character)
+        ) %>% 
+        select(-contains("..."))
+    }
+    
+    dlist[[f]] <- dlist.s# %>% do.call(bind_rows, .)
+  }
+  
+  
+  data <- dlist %>% 
+    do.call(bind_rows, .) %>% 
+    relocate(station, .after = Date) %>% 
+    mutate(Date = ymd(Date)) %>% 
+    filter(!is.na(Date)) %>% 
+    pivot_longer(-c(Date, station), names_to = "original") %>% 
+    left_join(name.lookup, join_by(original)) %>% 
+    select(-original) %>% 
+    # group_by(Date, station, name) %>% add_count() %>% filter(n>1)
+    pivot_wider(names_from = name, values_from = value) %>% 
+    rename(date = Date) %>% 
+    mutate(
+      across(
+        c(
+          contains("temp"), contains("dp"), contains("rh"),
+          contains("solar"), contains("precip"), contains("speed"),
+          contains("gust"), contains("water"), eto, etr
+        ),
+        as.numeric
+      )
+    ) %>% 
     mutate(
       year = year(date),
       day.year = yday(date),
@@ -41,7 +103,35 @@
       cdd = pmax((air_temp_max + air_temp_min) / 2 - 65, 0),
       gdd.b40 = pmax((air_temp_max + air_temp_min) / 2 - 40, 0),
       gdd.b40.c85 = pmax(pmin((air_temp_max + air_temp_min) / 2 - 40, 85), 0),
-    )
+    ) %>% 
+    filter(station == "Addy")
+  
+  
+  
+  # data <- files %>% 
+  #   read_csv(skip = 2) %>% 
+  #   distinct() %>% 
+  #   select(-contains("...")) %>% 
+  #   rename_with(~c(
+  #     "date", "air_temp_min", "air_temp_avg", "air_temp_max", 
+  #     "air_temp_min_9m", "air_temp_avg_9m", "air_temp_max_9m", 
+  #     "dp_avg", "rh_avg", "solar.rad", "precip", 
+  #     "wind.speed", "wind.gust", 
+  #     "wind.speed.10m", "wind.gust.10m", "wind.dir.10m",
+  #     "soil_temp_2in", "soil.water.2in",
+  #     "soil_temp_8in", "soil.water.8in",
+  #     "eto", "etr"
+  #   )) %>% 
+  #   mutate(
+  #     year = year(date),
+  #     day.year = yday(date),
+  #     max.date = ifelse(date == max(date), 1, 0),
+  #     current.year = ifelse(year == year(today()), 1, 0),
+  #     month = as.factor(month(date)),
+  #     cdd = pmax((air_temp_max + air_temp_min) / 2 - 65, 0),
+  #     gdd.b40 = pmax((air_temp_max + air_temp_min) / 2 - 40, 0),
+  #     gdd.b40.c85 = pmax(pmin((air_temp_max + air_temp_min) / 2 - 40, 85), 0),
+  #   )
 }
 
   
@@ -61,8 +151,8 @@ data %>%
 # Growing Degree Days
 data %>% 
   # rowwise() %>% 
-  filter(day.year > 50) %>% 
-  filter(day.year <= 202) %>% 
+  filter(day.year > 100) %>% 
+  filter(day.year <= yday(today())) %>% 
   group_by(year) %>% 
   mutate(gdd.agg = cumsum(gdd.b40)) %>% 
   ggplot(aes(x = day.year, y = gdd.agg)) +
@@ -72,7 +162,7 @@ data %>%
   geom_smooth(se = F, color = "black") +
   scale_linewidth_manual(values = c(.5, 1.5)) +
   scale_y_continuous(
-    trans = "log"
+    # trans = "log"
   )
 
 
@@ -131,6 +221,7 @@ data %>%
       scale_size_manual(values = c(0,5), guide = "none") +
       ggtitle("Spring Precipitation") +
       scale_size_manual(values = c(0,5), guide = "none") +
+      scale_color_viridis_d(option = "H") +
       theme_bw() +
       theme(
         legend.position = "bottom"
@@ -366,6 +457,29 @@ data %>%
   geom_col() +
   geom_label(fill = "white")
 
+data %>% 
+  group_by(year) %>% 
+  filter(day.year >= 50, day.year <= 250) %>% 
+  summarize(
+    mean = mean(air_temp_avg),
+    sd = sd(air_temp_avg),
+    p75 = quantile(air_temp_avg, 0.75)
+  ) %>% 
+  pivot_longer(-year) %>% 
+  ggplot(aes(x = year, y = value, fill = as.factor(year))) +
+  geom_col() +
+  geom_text(aes(label = round(value,1))) +
+  facet_grid(name ~ ., scales = "free") +
+  scale_y_continuous(
+    # limits = c(50,70)
+    # trans = "log"
+  )
+
+data %>% 
+  filter(day.year >= 50, day.year <= 250)  %>% 
+  ggplot(aes(x = air_temp_avg)) +
+  geom_histogram(aes(fill = factor(year))) +
+  facet_grid(year ~ .)
 
 
 
